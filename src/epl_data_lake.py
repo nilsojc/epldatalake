@@ -2,8 +2,10 @@ import boto3
 import json
 import time
 import requests
+import csv
 from dotenv import load_dotenv
 import os
+from io import StringIO
 
 # Load environment variables
 load_dotenv()
@@ -57,8 +59,8 @@ def fetch_epl_standings(league_id, season):
     try:
         url = f"https://{api_host}/standings"
         params = {
-            "league": 39,
-            "season": 2023,
+            "league": league_id,
+            "season": season,
         }
         headers = {
             "x-rapidapi-key": api_key,
@@ -106,17 +108,53 @@ def convert_to_line_delimited_json(data):
     print("Converting data to line-delimited JSON format...")
     return "\n".join([json.dumps(record) for record in data])
 
-def upload_data_to_s3(data):
+def convert_to_csv(data):
+    """Convert data to CSV format."""
+    try:
+        csv_buffer = StringIO()
+        fieldnames = ["rank", "team_name", "points", "goal_difference", "matches_played", "wins", "draws", "losses"]
+        writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for record in data:
+            writer.writerow({
+                "rank": record.get("rank"),
+                "team_name": record.get("team", {}).get("name"),
+                "points": record.get("points"),
+                "goal_difference": record.get("goalsDiff"),
+                "matches_played": record.get("all", {}).get("played"),
+                "wins": record.get("all", {}).get("win"),
+                "draws": record.get("all", {}).get("draw"),
+                "losses": record.get("all", {}).get("lose"),
+            })
+
+        print("Data converted to CSV format successfully.")
+        return csv_buffer.getvalue()
+    except Exception as e:
+        print(f"Error converting data to CSV: {e}")
+        return None
+
+def upload_data_to_s3(data, file_format="json"):
     """Upload EPL data to the S3 bucket."""
     try:
-        line_delimited_data = convert_to_line_delimited_json(data)
-        file_key = "raw-data/epl_standings_data.jsonl"
-        s3_client.put_object(
-            Bucket=bucket_name,
-            Key=file_key,
-            Body=line_delimited_data
-        )
-        print(f"Uploaded data to S3: {file_key}")
+        if file_format == "json":
+            line_delimited_data = convert_to_line_delimited_json(data)
+            file_key = "raw-data/epl_standings_data.jsonl"
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=file_key,
+                Body=line_delimited_data
+            )
+            print(f"Uploaded JSON data to S3: {file_key}")
+        elif file_format == "csv":
+            csv_data = convert_to_csv(data)
+            file_key = "raw-data/epl_standings_data.csv"
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=file_key,
+                Body=csv_data
+            )
+            print(f"Uploaded CSV data to S3: {file_key}")
     except Exception as e:
         print(f"Error uploading data to S3: {e}")
 
@@ -133,14 +171,7 @@ def create_glue_table():
                         {"Name": "team", "Type": "struct<id:int,name:string,logo:string>"},
                         {"Name": "points", "Type": "int"},
                         {"Name": "goalsDiff", "Type": "int"},
-                        {"Name": "group", "Type": "string"},
-                        {"Name": "form", "Type": "string"},
-                        {"Name": "status", "Type": "string"},
-                        {"Name": "description", "Type": "string"},
-                        {"Name": "all", "Type": "struct<played:int,win:int,draw:int,lose:int,goals:struct<for:int,against:int>>"},
-                        {"Name": "home", "Type": "struct<played:int,win:int,draw:int,lose:int,goals:struct<for:int,against:int>>"},
-                        {"Name": "away", "Type": "struct<played:int,win:int,draw:int,lose:int,goals:struct<for:int,against:int>>"},
-                        {"Name": "update", "Type": "string"},
+                        {"Name": "all", "Type": "struct<played:int,win:int,draw:int,lose:int>"},
                     ],
                     "Location": f"s3://{bucket_name}/raw-data/",
                     "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
@@ -179,7 +210,8 @@ def main():
     epl_data = fetch_epl_standings(league_id=39, season=2023)
     standings = extract_standings(epl_data)
     if standings:
-        upload_data_to_s3(standings)
+        upload_data_to_s3(standings, file_format="json")
+        upload_data_to_s3(standings, file_format="csv")
 
     create_glue_table()
     configure_athena()
