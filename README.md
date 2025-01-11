@@ -6,7 +6,7 @@
 
 This is part of the third project in the 30-day DevOps challenge! 
 
-In this project, I created an AWS Glue Database capable of quering data from RapidApi's sports data allowing me to show Team's stats as well as standings using amazon S3 and Amazon Athena.
+In this project, I created an AWS Glue Database capable of quering data from API-Football's sports data allowing me to show Team's stats as well as standings using amazon S3 and Amazon Athena.
 
 
 <h2>Environments and Technologies Used</h2>
