@@ -151,6 +151,7 @@ A S3 bucket will be created alongside our generated `Premier League` JSON data a
 
 ![image](/assets/image4.png)
 
+Note: In my script I also made it so that it would convert the data to .csv for use in PowerBI as it could also be easily used for data visualization.
 
 <h2>Conclusion</h2>
 
