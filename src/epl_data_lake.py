@@ -5,7 +5,7 @@ import requests
 from dotenv import load_dotenv
 import os
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
 # AWS configurations
@@ -14,15 +14,16 @@ bucket_name = "sports-epl-data-lake"  # Change to a unique S3 bucket name
 glue_database_name = "glue_epl_data_lake"
 athena_output_location = f"s3://{bucket_name}/athena-results/"
 
-# Sportsdata.io configurations (loaded from .env)
-api_key = os.getenv("SPORTS_DATA_API_KEY")  # Get API key from .env
-epl_endpoint = "https://premier-league-standings1.p.rapidapi.com/"
+# API-Football configurations
+api_key = os.getenv("SPORTS_DATA_API_KEY")  # Load API key from .env file
+if not api_key:
+    raise ValueError("API key not found. Make sure SPORTS_DATA_API_KEY is set in your .env file.")
+api_host = "v3.football.api-sports.io"
 
 # Create AWS clients
 s3_client = boto3.client("s3", region_name=region)
 glue_client = boto3.client("glue", region_name=region)
 athena_client = boto3.client("athena", region_name=region)
-
 
 def create_s3_bucket():
     """Create an S3 bucket for storing sports data."""
@@ -38,7 +39,6 @@ def create_s3_bucket():
     except Exception as e:
         print(f"Error creating S3 bucket: {e}")
 
-
 def create_glue_database():
     """Create a Glue database for the data lake."""
     try:
@@ -52,39 +52,65 @@ def create_glue_database():
     except Exception as e:
         print(f"Error creating Glue database: {e}")
 
-
-def fetch_epl_data():
-    """Fetch EPL standings data from the RapidAPI endpoint."""
+def fetch_epl_standings(league_id, season):
+    """Fetch EPL standings data using requests."""
     try:
-        headers = {
-            "X-RapidAPI-Key": api_key,
-            "X-RapidAPI-Host": "premier-league-standings1.p.rapidapi.com",
+        url = f"https://{api_host}/standings"
+        params = {
+            "league": 39,
+            "season": 2023,
         }
-        response = requests.get(epl_endpoint, headers=headers)
-        response.raise_for_status()  # Raise an error for bad status codes
-        print("Fetched EPL data successfully.")
-        return response.json()  # Return JSON response
-    except Exception as e:
-        print(f"Error fetching EPL data: {e}")
-        return []
+        headers = {
+            "x-rapidapi-key": api_key,
+            "x-rapidapi-host": api_host,
+        }
+        response = requests.get(url, headers=headers, params=params)
 
+        if response.status_code != 200:
+            print(f"Error fetching data: {response.status_code} {response.text}")
+            return None
+
+        response_json = response.json()
+        if not response_json.get("response"):
+            print("No data found in API response.")
+            return None
+
+        print("Standings data fetched successfully.")
+        return response_json["response"]
+
+    except Exception as e:
+        print(f"Exception occurred: {e}")
+        return None
+
+def extract_standings(data):
+    """Extract standings information from the API response."""
+    try:
+        if not data:
+            print("No data available to extract.")
+            return []
+
+        league_data = data[0].get("league", {})
+        standings = league_data.get("standings", [])
+        if not standings or not isinstance(standings[0], list):
+            print("Standings data is missing or malformed in API response.")
+            return []
+
+        print("Standings data extracted successfully.")
+        return standings[0]  # Return the first group of standings
+    except Exception as e:
+        print(f"Error extracting standings data: {e}")
+        return []
 
 def convert_to_line_delimited_json(data):
     """Convert data to line-delimited JSON format."""
     print("Converting data to line-delimited JSON format...")
     return "\n".join([json.dumps(record) for record in data])
 
-
 def upload_data_to_s3(data):
     """Upload EPL data to the S3 bucket."""
     try:
-        # Convert data to line-delimited JSON
         line_delimited_data = convert_to_line_delimited_json(data)
-
-        # Define S3 object key
         file_key = "raw-data/epl_standings_data.jsonl"
-
-        # Upload JSON data to S3
         s3_client.put_object(
             Bucket=bucket_name,
             Key=file_key,
@@ -93,7 +119,6 @@ def upload_data_to_s3(data):
         print(f"Uploaded data to S3: {file_key}")
     except Exception as e:
         print(f"Error uploading data to S3: {e}")
-
 
 def create_glue_table():
     """Create a Glue table for the data."""
@@ -104,14 +129,18 @@ def create_glue_table():
                 "Name": "epl_standings",
                 "StorageDescriptor": {
                     "Columns": [
-                        {"Name": "team", "Type": "struct<name:string,logo:string,abbreviation:string>"},
-                        {
-                            "Name": "stats",
-                            "Type": (
-                                "struct<wins:int,losses:int,ties:int,gamesPlayed:int,goalsFor:int,"
-                                "goalsAgainst:int,points:int,rank:int,goalDifference:int>"
-                            )
-                        },
+                        {"Name": "rank", "Type": "int"},
+                        {"Name": "team", "Type": "struct<id:int,name:string,logo:string>"},
+                        {"Name": "points", "Type": "int"},
+                        {"Name": "goalsDiff", "Type": "int"},
+                        {"Name": "group", "Type": "string"},
+                        {"Name": "form", "Type": "string"},
+                        {"Name": "status", "Type": "string"},
+                        {"Name": "description", "Type": "string"},
+                        {"Name": "all", "Type": "struct<played:int,win:int,draw:int,lose:int,goals:struct<for:int,against:int>>"},
+                        {"Name": "home", "Type": "struct<played:int,win:int,draw:int,lose:int,goals:struct<for:int,against:int>>"},
+                        {"Name": "away", "Type": "struct<played:int,win:int,draw:int,lose:int,goals:struct<for:int,against:int>>"},
+                        {"Name": "update", "Type": "string"},
                     ],
                     "Location": f"s3://{bucket_name}/raw-data/",
                     "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
@@ -127,7 +156,6 @@ def create_glue_table():
     except Exception as e:
         print(f"Error creating Glue table: {e}")
 
-
 def configure_athena():
     """Set up Athena output location."""
     try:
@@ -140,20 +168,22 @@ def configure_athena():
     except Exception as e:
         print(f"Error configuring Athena: {e}")
 
-
 # Main workflow
 def main():
     print("Setting up data lake for Premier League analytics...")
     create_s3_bucket()
     time.sleep(5)  # Ensure bucket creation propagates
     create_glue_database()
-    epl_data = fetch_epl_data()
-    if epl_data:  # Only proceed if data was fetched successfully
-        upload_data_to_s3(epl_data)
+
+    # Fetch and process EPL standings data
+    epl_data = fetch_epl_standings(league_id=39, season=2023)
+    standings = extract_standings(epl_data)
+    if standings:
+        upload_data_to_s3(standings)
+
     create_glue_table()
     configure_athena()
     print("Data lake setup complete.")
-
 
 if __name__ == "__main__":
     main()
