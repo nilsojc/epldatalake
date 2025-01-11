@@ -160,8 +160,6 @@ Once we have the file shown in the S3 bucket, we can grab them and use them for 
 ![image](/assets/image5.png)
 
 
-![image](/assets/image5.png)
-
 
 <h2>Conclusion</h2>
 
