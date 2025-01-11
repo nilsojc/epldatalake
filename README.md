@@ -153,6 +153,16 @@ A S3 bucket will be created alongside our generated `Premier League` JSON data a
 
 Note: In my script I also made it so that it would convert the data to .csv for use in PowerBI as it could also be easily used for data visualization.
 
+***(OPTIONAL) Use jsonl or csv data to convert it to tables or visualized data***
+
+Once we have the file shown in the S3 bucket, we can grab them and use them for watching that data in action!
+
+![image](/assets/image5.png)
+
+
+![image](/assets/image5.png)
+
+
 <h2>Conclusion</h2>
 
-In this project, I learned how you can leverage a Python script to grab API data, send a query to a database and parse it accordingly.
+In this project, I learned how you can leverage a Python script to grab API data, send a query to a database and parse it accordingly with Amazon Athena and Glue. I also explored it further by accessing the data generated from the api and using it to generate data visualizers that can display a table or a graph.
