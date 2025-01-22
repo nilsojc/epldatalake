@@ -129,7 +129,7 @@ aws iam get-role-policy --role-name SportsQuery --policy-name SportsQueryPermiss
 in the CLI, we will use `nano` to create and modify the .env file where we will store our API key and endpoint URL. 
 
 ```
-SPORTS_DATA_API_KEY=your_sportsdata_api_key
+SPORTS_DATA_API_KEY=yourapikey
 ```
 
 
