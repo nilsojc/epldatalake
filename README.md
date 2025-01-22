@@ -130,7 +130,6 @@ in the CLI, we will use `nano` to create and modify the .env file where we will 
 
 ```
 SPORTS_DATA_API_KEY=your_sportsdata_api_key
-NBA_ENDPOINT=https://api.sportsdata.io/v3/nba/scores/json/Players
 ```
 
 
